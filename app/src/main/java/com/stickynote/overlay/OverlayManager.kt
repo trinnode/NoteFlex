@@ -34,8 +34,8 @@ object OverlayManager {
         )
 
         lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = dm.widthPixels - defaultW - 20
-        lp.y = (dm.heightPixels * 0.08).toInt()
+        lp.x = (dm.widthPixels - defaultW) / 3
+        lp.y = (dm.heightPixels * 0.06).toInt()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             lp.layoutInDisplayCutoutMode =

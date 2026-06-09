@@ -1,5 +1,6 @@
 package com.stickynote.overlay
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -14,17 +15,15 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private fun dpToPx(context: Context, dp: Int): Int {
-    return (dp * context.resources.displayMetrics.density).toInt()
-}
 
 class StickerNoteUI(context: Context) : FrameLayout(context) {
 
@@ -33,6 +32,8 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
 
     private var expanded = true
     private var bulletMode = false
+    private var tabs = mutableListOf<NoteTab>()
+    private var activeTabIndex = 0
 
     private var dragStartX = 0f
     private var dragStartY = 0f
@@ -44,6 +45,9 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
     private lateinit var editText: EditText
     private lateinit var cardBody: FrameLayout
     private lateinit var handleView: View
+    private lateinit var tabContainer: LinearLayout
+    private lateinit var tabScroll: HorizontalScrollView
+    private lateinit var bulletBtn: ImageButton
 
     private var onMove: ((dx: Int, dy: Int) -> Unit)? = null
     private var onResize: ((dx: Int, dy: Int) -> Unit)? = null
@@ -55,7 +59,6 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
     init {
         layoutParams = ViewGroup.LayoutParams(P, P)
         buildUI(context)
-        loadText(context)
     }
 
     fun setOnMove(cb: (dx: Int, dy: Int) -> Unit) { onMove = cb }
@@ -63,12 +66,12 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
     fun setOnFocus(cb: (Boolean) -> Unit) { onFocus = cb }
 
     private fun buildUI(context: Context) {
-        handleView = createHandle(context).also { addView(it) }
+        handleView = createHandle(context)
+        addView(handleView)
 
         cardBody = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(P, P)
             visibility = VISIBLE
-
             val bg = GradientDrawable().apply {
                 setColor(Color.parseColor("#F51E1E1E"))
                 cornerRadius = 16f
@@ -77,87 +80,261 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
         }
 
         cardBody.addView(createDragBar(context))
-        cardBody.addView(createCloseBtn(context))
+
+        tabScroll = HorizontalScrollView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(P, 46).apply {
+                setMargins(0, 54, 0, 0)
+            }
+            isHorizontalScrollBarEnabled = false
+            isFillViewport = true
+        }
+        tabContainer = LinearLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(W, P)
+            orientation = LinearLayout.HORIZONTAL
+        }
+        tabScroll.addView(tabContainer)
+        cardBody.addView(tabScroll)
+
         cardBody.addView(createToolbar(context))
         editText = createEditText(context)
         cardBody.addView(editText)
         cardBody.addView(createResizer(context))
         addView(cardBody)
+
+        loadData(context)
+    }
+
+    private fun loadData(context: Context) {
+        scope.launch {
+            val data = NoteRepository.load(context)
+            tabs = data.tabs.toMutableList()
+            activeTabIndex = data.activeTabIndex
+            rebuildTabs(context)
+            showActiveTab(context)
+            scheduleSave(context)
+        }
+    }
+
+    private fun rebuildTabs(context: Context) {
+        tabContainer.removeAllViews()
+
+        for ((i, tab) in tabs.withIndex()) {
+            val isActive = i == activeTabIndex
+
+            val tabView = FrameLayout(context).apply {
+                val lp = LinearLayout.LayoutParams(W, P)
+                lp.setMargins(0, 0, 4, 0)
+                layoutParams = lp
+
+                val bg = GradientDrawable().apply {
+                    if (isActive) {
+                        setColor(Color.parseColor("#3DFFEB3B"))
+                        setStroke(1, Color.parseColor("#66FFEB3B"))
+                    } else {
+                        setColor(Color.parseColor("#222222"))
+                        setStroke(1, Color.parseColor("#444444"))
+                    }
+                    cornerRadius = 8f
+                }
+                setBackgroundDrawable(bg)
+            }
+
+            val titleLabel = TextView(context).apply {
+                text = tab.title
+                setTextColor(if (isActive) Color.parseColor("#FFEB3B") else Color.parseColor("#CCCCCC"))
+                textSize = 13f
+                gravity = Gravity.CENTER_VERTICAL
+                val lp = FrameLayout.LayoutParams(W, P)
+                lp.setMargins(12, 0, 32, 0)
+                layoutParams = lp
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                maxWidth = 160
+            }
+            tabView.addView(titleLabel)
+
+            if (tabs.size > 1) {
+                val closeTab = TextView(context).apply {
+                    text = "✕"
+                    setTextColor(Color.parseColor("#88FFFFFF"))
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    val lp = FrameLayout.LayoutParams(28, 28)
+                    lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                    lp.setMargins(0, 0, 4, 0)
+                    layoutParams = lp
+                    setOnClickListener {
+                        tabs.removeAt(i)
+                        if (activeTabIndex >= tabs.size) activeTabIndex = tabs.size - 1
+                        rebuildTabs(context)
+                        showActiveTab(context)
+                        scheduleSave(context)
+                    }
+                }
+                tabView.addView(closeTab)
+            }
+
+            tabView.setOnClickListener {
+                saveCurrentTab(context)
+                activeTabIndex = i
+                rebuildTabs(context)
+                showActiveTab(context)
+            }
+
+            tabView.setOnLongClickListener {
+                val input = EditText(context).apply {
+                    setText(tab.title)
+                    setSelection(tab.title.length)
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.GRAY)
+                    setSingleLine(true)
+                }
+                AlertDialog.Builder(context)
+                    .setTitle("Rename tab")
+                    .setView(input)
+                    .setPositiveButton("Rename") { _, _ ->
+                        val newTitle = input.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: tab.title
+                        tabs[i] = tab.copy(title = newTitle)
+                        rebuildTabs(context)
+                        scheduleSave(context)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                true
+            }
+
+            tabContainer.addView(tabView)
+        }
+
+        val addBtn = FrameLayout(context).apply {
+            val lp = LinearLayout.LayoutParams(46, P)
+            lp.setMargins(0, 0, 0, 0)
+            layoutParams = lp
+
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#333333"))
+                cornerRadius = 8f
+            }
+            setBackgroundDrawable(bg)
+        }
+
+        val plus = TextView(context).apply {
+            text = "+"
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            textSize = 20f
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(P, P)
+        }
+        addBtn.addView(plus)
+
+        addBtn.setOnClickListener {
+            saveCurrentTab(context)
+            val newTab = NoteTab(
+                id = java.util.UUID.randomUUID().toString(),
+                title = "Note ${tabs.size + 1}",
+                content = ""
+            )
+            tabs.add(newTab)
+            activeTabIndex = tabs.size - 1
+            rebuildTabs(context)
+            showActiveTab(context)
+            scheduleSave(context)
+
+            tabScroll.post { tabScroll.fullScroll(View.FOCUS_RIGHT) }
+        }
+
+        tabContainer.addView(addBtn)
+    }
+
+    private fun showActiveTab(context: Context) {
+        if (tabs.isEmpty()) return
+        val tab = tabs[activeTabIndex]
+        editText.removeTextChangedListener(textWatcher)
+        editText.setText(tab.content)
+        if (tab.content.isNotEmpty()) {
+            editText.setSelection(tab.content.length)
+        } else {
+            editText.setSelection(0)
+        }
+        editText.addTextChangedListener(textWatcher)
+    }
+
+    private fun saveCurrentTab(context: Context) {
+        if (tabs.isNotEmpty() && activeTabIndex < tabs.size) {
+            val content = editText.text?.toString() ?: ""
+            tabs[activeTabIndex] = tabs[activeTabIndex].copy(content = content)
+        }
+    }
+
+    private val textWatcher = object : TextWatcher {
+        private var updating = false
+        override fun beforeTextChanged(s: CharSequence?, s1: Int, s2: Int, s3: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            if (updating) return
+            if (bulletMode && count == 1 && before == 0) {
+                val c = s?.getOrNull(start) ?: return
+                if (c == '\n') {
+                    updating = true
+                    val txt = s.toString()
+                    val newTxt = txt.substring(0, start + 1) + "•  " + txt.substring(start + 1)
+                    editText.setText(newTxt)
+                    editText.setSelection(start + 4)
+                    updating = false
+                    return
+                }
+            }
+            if (tabs.isNotEmpty() && activeTabIndex < tabs.size) {
+                tabs[activeTabIndex] = tabs[activeTabIndex].copy(content = s?.toString() ?: "")
+            }
+            scheduleSave()
+        }
+        override fun afterTextChanged(s: Editable?) {}
     }
 
     private fun createDragBar(context: Context): View {
-        return FrameLayout(context).apply {
+        val bar = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(P, 52)
-
             setBackgroundColor(Color.parseColor("#1AFFFFFF"))
-
-            val line = View(context)
+        }
+        val line = View(context).apply {
             val lp = FrameLayout.LayoutParams(100, 4)
             lp.gravity = Gravity.CENTER
-            line.layoutParams = lp
-            line.setBackgroundColor(Color.parseColor("#44FFFFFF"))
-            addView(line)
-
-            setOnTouchListener { _, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        dragStartX = event.rawX; dragStartY = event.rawY
-                        isDragging = false; true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = event.rawX - dragStartX
-                        val dy = event.rawY - dragStartY
-                        if (!isDragging && (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8)) isDragging = true
-                        if (isDragging) {
-                            onMove?.invoke(dx.toInt(), dy.toInt())
-                            dragStartX = event.rawX; dragStartY = event.rawY
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }
-    }
-
-    private fun createCloseBtn(context: Context): TextView {
-        return TextView(context).apply {
-            text = "✕"
-            setTextColor(Color.parseColor("#FF999999"))
-            textSize = 18f
-            gravity = Gravity.CENTER
-            val lp = FrameLayout.LayoutParams(48, 48)
-            lp.gravity = Gravity.END or Gravity.TOP
-            lp.setMargins(0, 2, 6, 0)
             layoutParams = lp
-            setOnClickListener {
-                expanded = false
-                cardBody.visibility = GONE
-                handleView.visibility = VISIBLE
-                onFocus?.invoke(false)
+            setBackgroundColor(Color.parseColor("#44FFFFFF"))
+        }
+        bar.addView(line)
+
+        bar.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartX = event.rawX; dragStartY = event.rawY; isDragging = false; true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - dragStartX; val dy = event.rawY - dragStartY
+                    if (!isDragging && (kotlin.math.abs(dx) > 6 || kotlin.math.abs(dy) > 6)) isDragging = true
+                    if (isDragging) {
+                        onMove?.invoke(dx.toInt(), dy.toInt())
+                        dragStartX = event.rawX; dragStartY = event.rawY
+                    }
+                    true
+                }
+                else -> false
             }
         }
+        return bar
     }
 
     private fun createToolbar(context: Context): FrameLayout {
         val toolbar = FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(P, 48).apply {
-                setMargins(12, 54, 12, 0)
-                gravity = Gravity.TOP
+            layoutParams = FrameLayout.LayoutParams(P, 44).apply {
+                setMargins(12, 102, 12, 0)
             }
         }
 
         bulletBtn = ImageButton(context).apply {
-            setOnClickListener {
-                bulletMode = !bulletMode
-                val c = if (bulletMode) Color.parseColor("#FFEB3B") else Color.parseColor("#88FFFFFF")
-                setColorFilter(c)
-                if (bulletMode) insertBullet()
-            }
-            val lp = FrameLayout.LayoutParams(44, 44)
+            val lp = FrameLayout.LayoutParams(40, 40)
             lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             layoutParams = lp
-
             val bg = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
                 setStroke(2, Color.parseColor("#88FFFFFF"))
@@ -168,26 +345,31 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
             setColorFilter(Color.parseColor("#88FFFFFF"))
             scaleType = android.widget.ImageView.ScaleType.CENTER
             contentDescription = "Bullets"
+            setOnClickListener {
+                bulletMode = !bulletMode
+                val c = if (bulletMode) Color.parseColor("#FFEB3B") else Color.parseColor("#88FFFFFF")
+                setColorFilter(c)
+                if (bulletMode) insertBullet()
+            }
         }
         toolbar.addView(bulletBtn)
 
         val tabBtn = ImageButton(context).apply {
-            val lp = FrameLayout.LayoutParams(44, 44)
+            val lp = FrameLayout.LayoutParams(40, 40)
             lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
             layoutParams = lp
-
             val bg = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
                 setStroke(2, Color.parseColor("#88FFFFFF"))
                 cornerRadius = 8f
             }
             setBackgroundDrawable(bg)
-            setOnClickListener { insertAtCursor("    ") }
+            setImageDrawable(createTabIcon(context))
+            setColorFilter(Color.parseColor("#88FFFFFF"))
+            scaleType = android.widget.ImageView.ScaleType.CENTER
             contentDescription = "Tab"
+            setOnClickListener { insertAtCursor("    ") }
         }
-        tabBtn.setImageDrawable(createTabIcon(context))
-        tabBtn.setColorFilter(Color.parseColor("#88FFFFFF"))
-        tabBtn.scaleType = android.widget.ImageView.ScaleType.CENTER
         toolbar.addView(tabBtn)
 
         return toolbar
@@ -201,14 +383,12 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
             textSize = 15f
             background = null
             val lp = FrameLayout.LayoutParams(P, P)
-            lp.setMargins(16, 106, 16, 44)
+            lp.setMargins(16, 150, 16, 44)
             layoutParams = lp
             gravity = Gravity.TOP
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION
-
             setOnFocusChangeListener { _, hasFocus -> onFocus?.invoke(hasFocus) }
-
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_TAB) {
                     val s = text?.toString() ?: ""
@@ -219,32 +399,8 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
                     true
                 } else false
             }
-
-            addTextChangedListener(object : TextWatcher {
-                private var updating = false
-                override fun beforeTextChanged(s: CharSequence?, s1: Int, s2: Int, s3: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    if (updating) return
-                    if (bulletMode && count == 1 && before == 0) {
-                        val c = s?.getOrNull(start) ?: return
-                        if (c == '\n') {
-                            updating = true
-                            val txt = s.toString()
-                            val newTxt = txt.substring(0, start + 1) + "•  " + txt.substring(start + 1)
-                            setText(newTxt)
-                            setSelection(start + 4)
-                            updating = false
-                            return
-                        }
-                    }
-                    scheduleSave(context, s?.toString() ?: "")
-                }
-                override fun afterTextChanged(s: Editable?) {}
-            })
         }
     }
-
-    private var bulletBtn: ImageButton? = null
 
     private fun insertBullet() {
         val s = editText.text?.toString() ?: ""
@@ -265,41 +421,35 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
     }
 
     private fun createBulletIcon(context: Context): android.graphics.drawable.Drawable {
-        val bmp = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888)
+        val bmp = android.graphics.Bitmap.createBitmap(40, 40, android.graphics.Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(bmp)
         val paint = android.graphics.Paint().apply {
-            color = Color.WHITE
-            textSize = 30f
-            isAntiAlias = true
+            color = Color.WHITE; textSize = 26f; isAntiAlias = true
         }
-        c.drawText("•", 14f, 34f, paint)
+        c.drawText("•", 10f, 28f, paint)
         return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
     }
 
     private fun createTabIcon(context: Context): android.graphics.drawable.Drawable {
-        val bmp = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888)
+        val bmp = android.graphics.Bitmap.createBitmap(40, 40, android.graphics.Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(bmp)
         val paint = android.graphics.Paint().apply {
-            color = Color.WHITE
-            textSize = 24f
-            isAntiAlias = true
+            color = Color.WHITE; textSize = 22f; isAntiAlias = true
         }
-        c.drawText("↹", 10f, 32f, paint)
+        c.drawText("↹", 7f, 27f, paint)
         return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
     }
 
     private fun createHandle(context: Context): View {
-        return FrameLayout(context).apply {
+        val container = FrameLayout(context).apply {
             val lp = FrameLayout.LayoutParams(52, 400)
             lp.gravity = Gravity.CENTER_VERTICAL
             layoutParams = lp
-
             val bg = GradientDrawable().apply {
                 setColor(Color.parseColor("#991E1E1E"))
                 cornerRadii = floatArrayOf(12f, 12f, 0f, 0f, 0f, 0f, 12f, 12f)
             }
             setBackgroundDrawable(bg)
-
             val dots = TextView(context).apply {
                 text = "⋮"
                 setTextColor(Color.parseColor("#DDFFFFFF"))
@@ -308,17 +458,14 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
                 layoutParams = FrameLayout.LayoutParams(W, W).apply { gravity = Gravity.CENTER }
             }
             addView(dots)
-
             setOnTouchListener { _, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        dragStartX = event.rawX; dragStartY = event.rawY
-                        isDragging = false; true
+                        dragStartX = event.rawX; dragStartY = event.rawY; isDragging = false; true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dx = event.rawX - dragStartX
-                        val dy = event.rawY - dragStartY
-                        if (!isDragging && (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8)) isDragging = true
+                        val dx = event.rawX - dragStartX; val dy = event.rawY - dragStartY
+                        if (!isDragging && (kotlin.math.abs(dx) > 6 || kotlin.math.abs(dy) > 6)) isDragging = true
                         if (isDragging) {
                             onMove?.invoke(dx.toInt(), dy.toInt())
                             dragStartX = event.rawX; dragStartY = event.rawY
@@ -329,7 +476,9 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
                         if (!isDragging) {
                             expanded = !expanded
                             cardBody.visibility = if (expanded) VISIBLE else GONE
-                            if (!expanded) onFocus?.invoke(false)
+                            if (!expanded) {
+                                onFocus?.invoke(false)
+                            }
                         }
                         isDragging = false; true
                     }
@@ -337,20 +486,19 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
                 }
             }
         }
+        return container
     }
 
     private fun createResizer(context: Context): View {
         return View(context).apply {
-            val lp = FrameLayout.LayoutParams(40, 40)
+            val lp = FrameLayout.LayoutParams(36, 36)
             lp.gravity = Gravity.BOTTOM or Gravity.END
             layoutParams = lp
-
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#66FFFFFF"))
+                setColor(Color.parseColor("#55FFFFFF"))
                 cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 16f, 0f)
             }
             setBackgroundDrawable(bg)
-
             setOnTouchListener { _, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -371,19 +519,20 @@ class StickerNoteUI(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun scheduleSave(context: Context, text: String) {
+    private fun scheduleSave() {
         saveJob?.cancel()
         saveJob = scope.launch {
             delay(300)
-            NoteRepository.saveNote(context, text)
+            val ctx = context
+            NoteRepository.save(ctx, tabs.toList(), activeTabIndex)
         }
     }
 
-    private fun loadText(context: Context) {
-        scope.launch {
-            val t = NoteRepository.loadNote(context)
-            editText.setText(t)
-            if (t.isNotEmpty()) editText.setSelection(t.length)
+    private fun scheduleSave(context: Context) {
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            delay(300)
+            NoteRepository.save(context, tabs.toList(), activeTabIndex)
         }
     }
 }
