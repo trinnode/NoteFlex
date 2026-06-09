@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "StickerPaster"
+rootProject.name = "NoteFlex"
 include(":app")

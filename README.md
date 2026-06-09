@@ -1,117 +1,60 @@
-# StickerPaster — Floating Notepad Overlay for Android
+# NoteFlex
 
-StickerPaster is a floating overlay notepad that lives on top of your other apps. Whether you need to quickly jot down a thought, keep a running to do list visible while browsing, or manage multiple notes side by side, StickerPaster keeps your notes right where you need them.
+A floating notepad that stays on top of your other apps. Write quick notes, keep a to do list visible while you browse, or manage multiple notes without switching windows.
 
----
+## Features
 
-## What it does
+- Lives on top of everything. Read and write without leaving the app you are in.
+- Multiple tabs, each with its own name and content. Long press a tab to rename it.
+- Drag the handle or the top bar to move the note anywhere on screen.
+- Resize from the bottom right corner.
+- Tap the handle to collapse the note into a slim strip. Tap again to expand it back.
+- Bullet mode. Tap the bullet button and every new line starts with a bullet.
+- Tab key works. Press the hardware Tab key or the tab button to indent.
+- Everything saves automatically after a short pause. Your notes stay after closing the app.
 
-- **Floating overlay** — your note stays visible on top of all apps. Read, write, or just glance at your note without switching away from what you're doing.
-- **Multiple tabs** — create separate notes for different topics. Each tab keeps its own content and title.
-- **Named tabs** — tabs start with default names like "Note 1", "Note 2". Long press any tab to give it a custom name.
-- **Drag anywhere** — grab the handle bar or the top strip and drag the note to any corner of your screen. No restrictions, full freedom.
-- **Resize to fit** — pull the bottom right corner handle to make the note bigger or smaller.
-- **Collapse to a tab** — tap the handle to collapse the note into a slim tab on the edge of the screen. Tap again to bring it back.
-- **Auto save** — every keystroke is saved automatically after a short pause. Your notes persist across reboots.
-- **Bullet mode** — toggle bullet mode using the bullet button in the toolbar. Each new line starts with a bullet automatically.
-- **Tab key support** — press the physical Tab key or the toolbar tab button to indent (four spaces).
-- **Keyboard aware** — tap the text area to start typing. Tap outside or close to dismiss the keyboard and let touches pass through to the app behind.
+## Install
 
----
-
-## Getting started
-
-### Requirements
-
-An Android device running **Android 8.0 (API 26)** or newer.
-
-### Install
-
-Download the latest APK from the [Releases](https://github.com/trinnode/StickerApp/releases) page and sideload it.
-
-Or via ADB:
+Download the APK from the [Releases](https://github.com/trinnode/NoteFlex/releases) page and sideload it. Or use ADB:
 
 ```
-adb install StickerPaster.apk
+adb install NoteFlex.apk
 ```
 
-### First launch
+You need Android 8.0 or newer.
 
-1. The app will ask for **overlay permission** — this lets the note float on top of other apps.
-2. On Android 13+ it also asks for **notification permission** — this is needed to keep the overlay service running in the background.
-3. Once granted, the note appears on your screen. Start typing.
+## First launch
 
----
+The app asks for overlay permission so it can draw on top of other apps. On Android 13 and up it also asks for notification permission, which keeps the note alive in the background. Once both are granted the note appears and you can start typing.
 
-## Building from source
-
-### Requirements
-
-- JDK 17 or newer
-- Android SDK (platform 34, build tools 34.0.0)
-- Gradle 8.5 (wrapper included)
-
-### Build steps
+## Building
 
 ```
-git clone https://github.com/trinnode/StickerApp.git
-cd StickerApp
+git clone https://github.com/trinnode/NoteFlex.git
+cd NoteFlex
 export ANDROID_HOME=/path/to/your/sdk
 ./gradlew assembleDebug
 ```
 
-The debug APK will be at `app/build/outputs/apk/debug/app-debug.apk`.
+The APK ends up at `app/build/outputs/apk/debug/app-debug.apk`.
 
----
+JDK 17 or newer works. Android SDK platform 34 and build tools 34.0.0 are expected.
 
-## How it works under the hood
+## How it works
 
-| Component | What it uses |
-|---|---|
-| Overlay window | `WindowManager.LayoutParams` with `TYPE_APPLICATION_OVERLAY` |
-| User interface | Native Android views (FrameLayout, EditText, ImageButton, etc.) |
-| Persistence | Jetpack DataStore Preferences with JSON serialization |
-| Background service | Foreground Service (type `specialUse`) with a low priority notification |
-| Permissions | `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`, `POST_NOTIFICATIONS` |
-| Minimum SDK | 26 |
-| Target SDK | 34 |
+The overlay is a regular Android `FrameLayout` added through `WindowManager` with `TYPE_APPLICATION_OVERLAY`. Touches pass through by default because of `FLAG_NOT_FOCUSABLE`. When you tap the text area the flag is removed so the keyboard can appear, and when you tap outside it goes back.
 
-The overlay uses `FLAG_NOT_FOCUSABLE` by default so touches pass through to whatever app is underneath. When you tap the text area, focus mode switches on to allow keyboard input. Tapping outside or pressing close switches it back off.
+Notes are stored with Jetpack DataStore as JSON. The service runs in the foreground with a low priority notification so Android does not kill it.
 
----
-
-## Project structure
+## Files
 
 ```
-StickerApp/
-├── app/
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml
-│   │   ├── java/com/stickynote/overlay/
-│   │   │   ├── MainActivity.kt          — permission flow and service launch
-│   │   │   ├── StickerService.kt        — foreground service lifecycle
-│   │   │   ├── OverlayManager.kt        — window management (add, move, resize, remove)
-│   │   │   ├── StickerNoteUI.kt         — the full note UI with tabs, toolbar, drag, resize
-│   │   │   └── NoteRepository.kt        — DataStore backed persistence with JSON
-│   │   └── res/
-│   │       ├── values/strings.xml
-│   │       ├── drawable/                — icons and vectors
-│   │       └── mipmap-anydpi-v26/       — adaptive app icon
-│   ├── build.gradle.kts
-│   └── remaining gradle files
-├── build.gradle.kts
-├── settings.gradle.kts
-├── gradle.properties
-├── gradlew / gradlew.bat
-└── README.md
+app/src/main/java/com/noteflex/overlay/
+  MainActivity.kt        permissions
+  NoteFlexService.kt     foreground service
+  OverlayManager.kt      window management
+  NoteFlexUI.kt          the overlay itself
+  NoteRepository.kt      data persistence
 ```
 
----
-
-## Contributing
-
-Open an issue or send a pull request over on GitHub. All ideas and fixes are welcome.
-
----
-
-Built with plain Android Views and Kotlin.
+Built with Kotlin and plain Android Views.
