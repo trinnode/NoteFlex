@@ -53,6 +53,7 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
     private var onResize: ((dx: Int, dy: Int) -> Unit)? = null
     private var onFocus: ((Boolean) -> Unit)? = null
     private var onCollapse: ((Boolean) -> Unit)? = null
+    private var onClose: (() -> Unit)? = null
 
     private val P = ViewGroup.LayoutParams.MATCH_PARENT
     private val W = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -66,13 +67,14 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
     fun setOnResize(cb: (dx: Int, dy: Int) -> Unit) { onResize = cb }
     fun setOnFocus(cb: (Boolean) -> Unit) { onFocus = cb }
     fun setOnCollapse(cb: (Boolean) -> Unit) { onCollapse = cb }
+    fun setOnClose(cb: () -> Unit) { onClose = cb }
 
     private fun buildUI(context: Context) {
         handleView = createHandle(context)
         addView(handleView)
 
         cardBody = FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(P, P)
+            layoutParams = FrameLayout.LayoutParams(P, P).apply { leftMargin = 52 }
             visibility = VISIBLE
             val bg = GradientDrawable().apply {
                 setColor(Color.parseColor("#F51E1E1E"))
@@ -320,6 +322,15 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
                     }
                     true
                 }
+                MotionEvent.ACTION_UP -> {
+                    if (!isDragging) {
+                        expanded = !expanded
+                        cardBody.visibility = if (expanded) VISIBLE else GONE
+                        if (!expanded) onFocus?.invoke(false)
+                        onCollapse?.invoke(expanded)
+                    }
+                    isDragging = false; true
+                }
                 else -> false
             }
         }
@@ -358,7 +369,8 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
 
         val tabBtn = ImageButton(context).apply {
             val lp = FrameLayout.LayoutParams(40, 40)
-            lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            lp.setMargins(46, 0, 0, 0)
             layoutParams = lp
             val bg = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
@@ -373,6 +385,48 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
             setOnClickListener { insertAtCursor("    ") }
         }
         toolbar.addView(tabBtn)
+
+        val minimizeBtn = ImageButton(context).apply {
+            val lp = FrameLayout.LayoutParams(40, 40)
+            lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            lp.setMargins(0, 0, 46, 0)
+            layoutParams = lp
+            val bg = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(2, Color.parseColor("#88FFFFFF"))
+                cornerRadius = 8f
+            }
+            setBackgroundDrawable(bg)
+            setImageDrawable(createMinimizeIcon(context))
+            setColorFilter(Color.parseColor("#88FFFFFF"))
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            contentDescription = "Minimize"
+            setOnClickListener {
+                expanded = false
+                cardBody.visibility = GONE
+                onFocus?.invoke(false)
+                onCollapse?.invoke(false)
+            }
+        }
+        toolbar.addView(minimizeBtn)
+
+        val closeBtn = ImageButton(context).apply {
+            val lp = FrameLayout.LayoutParams(40, 40)
+            lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = lp
+            val bg = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(2, Color.parseColor("#88FFFFFF"))
+                cornerRadius = 8f
+            }
+            setBackgroundDrawable(bg)
+            setImageDrawable(createCloseIcon(context))
+            setColorFilter(Color.parseColor("#88FFFFFF"))
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            contentDescription = "Close"
+            setOnClickListener { onClose?.invoke() }
+        }
+        toolbar.addView(closeBtn)
 
         return toolbar
     }
@@ -439,6 +493,27 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
             color = Color.WHITE; textSize = 22f; isAntiAlias = true
         }
         c.drawText("↹", 7f, 27f, paint)
+        return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
+    }
+
+    private fun createMinimizeIcon(context: Context): android.graphics.drawable.Drawable {
+        val bmp = android.graphics.Bitmap.createBitmap(40, 40, android.graphics.Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint().apply {
+            color = Color.WHITE; strokeWidth = 3f; isAntiAlias = true
+        }
+        cv.drawLine(8f, 20f, 32f, 20f, paint)
+        return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
+    }
+
+    private fun createCloseIcon(context: Context): android.graphics.drawable.Drawable {
+        val bmp = android.graphics.Bitmap.createBitmap(40, 40, android.graphics.Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint().apply {
+            color = Color.WHITE; strokeWidth = 3f; isAntiAlias = true
+        }
+        cv.drawLine(12f, 12f, 28f, 28f, paint)
+        cv.drawLine(28f, 12f, 12f, 28f, paint)
         return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
     }
 

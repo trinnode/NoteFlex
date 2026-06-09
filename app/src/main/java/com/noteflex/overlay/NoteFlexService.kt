@@ -22,6 +22,7 @@ class NoteFlexService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        OverlayManager.setOnStopRequested { stopSelf() }
         OverlayManager.showOverlay(this)
         return START_STICKY
     }

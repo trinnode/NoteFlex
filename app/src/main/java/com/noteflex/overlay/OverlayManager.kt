@@ -3,7 +3,6 @@ package com.noteflex.overlay
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
 
@@ -12,11 +11,16 @@ object OverlayManager {
     private var overlayView: NoteFlexUI? = null
     private var windowManager: WindowManager? = null
     private var params: WindowManager.LayoutParams? = null
+    private var onStopRequested: (() -> Unit)? = null
 
     private var expandedWidth = 0
     private var expandedHeight = 0
     private var expandedX = 0
     private var expandedY = 0
+
+    fun setOnStopRequested(cb: () -> Unit) {
+        onStopRequested = cb
+    }
 
     fun showOverlay(context: Context) {
         if (overlayView != null) return
@@ -98,13 +102,8 @@ object OverlayManager {
                 expandedX = lp.x
                 expandedY = lp.y
 
-                val handleW = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP, 52f, dm
-                ).toInt()
-                val handleH = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP, 400f, dm
-                ).toInt()
-
+                val handleW = 52
+                val handleH = 400
                 val handleOffset = (expandedHeight - handleH) / 2
                 lp.x = expandedX
                 lp.y = expandedY + handleOffset
@@ -114,6 +113,11 @@ object OverlayManager {
             try {
                 windowManager?.updateViewLayout(sticker, lp)
             } catch (_: Exception) {}
+        }
+
+        sticker.setOnClose {
+            removeOverlay()
+            onStopRequested?.invoke()
         }
 
         windowManager?.addView(sticker, lp)
