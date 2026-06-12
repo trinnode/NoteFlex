@@ -23,6 +23,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AuthActivity"
+            android:theme="@style/Theme.Transparent"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+
         <service
             android:name=".NoteFlexService"
             android:foregroundServiceType="specialUse"

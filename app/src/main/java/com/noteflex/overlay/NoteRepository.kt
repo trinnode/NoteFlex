@@ -16,7 +16,9 @@ private val TABS_KEY = stringPreferencesKey("tabs_data")
 data class NoteTab(
     val id: String,
     var title: String,
-    var content: String
+    var content: String,
+    val locked: Boolean = false,
+    val passwordHash: String? = null
 )
 
 data class NoteData(
@@ -33,6 +35,10 @@ object NoteRepository {
             obj.put("id", tab.id)
             obj.put("title", tab.title)
             obj.put("content", tab.content)
+            if (tab.locked) {
+                obj.put("locked", true)
+                tab.passwordHash?.let { obj.put("passwordHash", it) }
+            }
             arr.put(obj)
         }
         val root = JSONObject()
@@ -50,7 +56,9 @@ object NoteRepository {
             tabs.add(NoteTab(
                 id = obj.getString("id"),
                 title = obj.optString("title", "Untitled"),
-                content = obj.optString("content", "")
+                content = obj.optString("content", ""),
+                locked = obj.optBoolean("locked", false),
+                passwordHash = obj.optString("passwordHash", "").takeIf { it.isNotEmpty() }
             ))
         }
         val activeIndex = root.optInt("activeIndex", 0).coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
