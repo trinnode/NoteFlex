@@ -35,6 +35,7 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
 
     private var expanded = true
     private var bulletMode = false
+    private var checkboxMode = false
     private var tabs = mutableListOf<NoteTab>()
     private var activeTabIndex = 0
 
@@ -440,6 +441,18 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
                     return
                 }
             }
+            if (checkboxMode && count == 1 && before == 0) {
+                val c = s?.getOrNull(start) ?: return
+                if (c == '\n') {
+                    updating = true
+                    val txt = s.toString()
+                    val newTxt = txt.substring(0, start + 1) + "[ ] " + txt.substring(start + 1)
+                    editText.setText(newTxt)
+                    editText.setSelection(start + 4)
+                    updating = false
+                    return
+                }
+            }
             if (tabs.isNotEmpty() && activeTabIndex < tabs.size) {
                 val tab = tabs[activeTabIndex]
                 if (!tab.locked || AuthState.isUnlocked(tab.id)) {
@@ -538,7 +551,12 @@ class NoteFlexUI(context: Context) : FrameLayout(context) {
             setColorFilter(Color.parseColor("#88FFFFFF"))
             scaleType = android.widget.ImageView.ScaleType.CENTER
             contentDescription = "Checkbox"
-            setOnClickListener { insertAtCursor("[ ] ") }
+            setOnClickListener {
+                checkboxMode = !checkboxMode
+                val c = if (checkboxMode) Color.parseColor("#FFEB3B") else Color.parseColor("#88FFFFFF")
+                setColorFilter(c)
+                if (checkboxMode) insertAtCursor("[ ] ")
+            }
         }
         toolbar.addView(checkboxBtn)
 
