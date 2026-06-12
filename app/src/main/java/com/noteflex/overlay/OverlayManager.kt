@@ -18,6 +18,10 @@ object OverlayManager {
     private var expandedX = 0
     private var expandedY = 0
 
+    private var baseWidth = 0
+    private var baseHeight = 0
+    private var currentScale = 1.0f
+
     fun setOnStopRequested(cb: () -> Unit) {
         onStopRequested = cb
     }
@@ -57,6 +61,9 @@ object OverlayManager {
         expandedHeight = defaultH
         expandedX = lp.x
         expandedY = lp.y
+        baseWidth = defaultW
+        baseHeight = defaultH
+        currentScale = 1.0f
 
         val sticker = NoteFlexUI(context)
         overlayView = sticker
@@ -74,6 +81,9 @@ object OverlayManager {
             val newH = (lp.height + dy).coerceIn(260, 2000)
             lp.width = newW
             lp.height = newH
+            baseWidth = newW
+            baseHeight = newH
+            currentScale = 1.0f
             try {
                 windowManager?.updateViewLayout(sticker, lp)
             } catch (_: Exception) {}
@@ -110,6 +120,15 @@ object OverlayManager {
                 lp.width = handleW
                 lp.height = handleH
             }
+            try {
+                windowManager?.updateViewLayout(sticker, lp)
+            } catch (_: Exception) {}
+        }
+
+        sticker.setOnScale { scale ->
+            currentScale = scale.coerceIn(0.3f, 1.0f)
+            lp.width = (baseWidth * currentScale).toInt().coerceIn(100, 1600)
+            lp.height = (baseHeight * currentScale).toInt().coerceIn(100, 2000)
             try {
                 windowManager?.updateViewLayout(sticker, lp)
             } catch (_: Exception) {}

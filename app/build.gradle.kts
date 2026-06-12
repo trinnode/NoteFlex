@@ -11,8 +11,8 @@ android {
         applicationId = "com.noteflex.overlay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 5
+        versionName = "5.0"
     }
 
     buildTypes {
@@ -47,4 +47,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.biometric:biometric:1.1.0")
 }
